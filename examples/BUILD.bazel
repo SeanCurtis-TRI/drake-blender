@@ -11,6 +11,9 @@ py_binary(
     srcs = ["ball_bin.py"],
     data = [
         ":ball_bin.yaml",
+        ":package.xml",
+        ":weird_sphere.gltf",
+        ":weird_sphere.sdf",
         "//:server",
         "@color_attribute_painting//file",
     ],

@@ -141,10 +141,16 @@ class Blender:
         # Import a glTF file. Note that the Blender glTF importer imposes a
         # +90 degree rotation around the X-axis when loading meshes. Thus, we
         # counterbalance the rotation right after the glTF-loading.
-        # TODO(#39) This is very suspicious. Get to the bottom of it.
         bpy.ops.import_scene.gltf(filepath=str(params.scene))
+        # TODO(#39) This rotation is very suspicious. Get to the bottom of it.
+        # We explicitly specify the pivot point for the rotation to allow for
+        # gltf files with root nodes with arbitrary positioning. We simply want
+        # to rotate around the world origin.
         bpy.ops.transform.rotate(
-            value=math.pi / 2, orient_axis="X", orient_type="GLOBAL"
+            value=math.pi / 2,
+            orient_axis="X",
+            orient_type="GLOBAL",
+            center_override=(0, 0, 0),
         )
 
         # Set rendering parameters.
@@ -247,6 +253,16 @@ class Blender:
         world_nodes = bpy.data.worlds["World"].node_tree.nodes
         world_nodes["Background"].inputs[0].default_value = background_color
 
+        # Every object imported from the gltf file has a custom bool attribute
+        # named "from_drake". It should be set to True if present.
+        def is_from_gltf(object):
+            value = object.get("from_drake")
+            if value is None:
+                return False
+            # If present, it should be set.
+            assert value == True
+            return value
+
         # Iterate over all meshes and set their label values.
         for bpy_object in bpy.data.objects:
             assert bpy_object is not None
@@ -257,11 +273,10 @@ class Blender:
             if bpy_object.type != "MESH":
                 continue
 
-            # If a mesh is imported from a glTF, its parent node will be
-            # `Renderer Node`, and we will set its label value to its diffuse
-            # color. If a mesh is loaded from a blend file, its label value
-            # will be set to white (same as the background).
-            if bpy_object.parent.name == "Renderer Node":
+            # If a mesh is imported from a glTF, we will set its label value to
+            # its diffuse color. If a mesh is loaded from a blend file, its
+            # label value will be set to white (same as the background).
+            if is_from_gltf(bpy_object):
                 mesh_color = bpy_object.data.materials[0].diffuse_color
             else:
                 mesh_color = background_color

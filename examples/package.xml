@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>weird_sphere</name>
+  <version>0.0.0</version>
+  <description>
+    A sphere with multiple materials stored in gltf format.
+  </description>
+  <maintainer email="user@example.com">John Doe</maintainer>
+  <author>Jane Doe</author>
+  <license>N/A</license>
+</package>

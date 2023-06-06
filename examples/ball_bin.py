@@ -24,7 +24,7 @@ import typing
 from bazel_tools.tools.python.runfiles import runfiles
 from pydrake.common import configure_logging
 from pydrake.common.yaml import yaml_load_typed
-from pydrake.geometry.render import (
+from pydrake.geometry import (
     MakeRenderEngineGltfClient,
     MakeRenderEngineVtk,
     RenderEngineGltfClientParams,
@@ -33,6 +33,7 @@ from pydrake.geometry.render import (
 from pydrake.multibody.parsing import (
     ModelDirective,
     ModelDirectives,
+    Parser,
     ProcessModelDirectives,
 )
 from pydrake.multibody.plant import AddMultibodyPlant, MultibodyPlantConfig
@@ -102,8 +103,13 @@ def _run(args):
     plant, scene_graph = AddMultibodyPlant(
         config=MultibodyPlantConfig(), builder=builder
     )
+    parser = Parser(plant=plant)
+    package_xml = str(_find_resource("drake_blender/examples/package.xml"))
+    parser.package_map().AddPackageXml(filename=package_xml)
     added_models = ProcessModelDirectives(
-        directives=ModelDirectives(directives=scenario.directives), plant=plant
+        directives=ModelDirectives(directives=scenario.directives),
+        plant=plant,
+        parser=parser,
     )
     plant.Finalize()
 
