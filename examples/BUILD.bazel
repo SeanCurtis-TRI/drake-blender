@@ -12,6 +12,7 @@ py_binary(
     data = [
         ":ball_bin.yaml",
         ":package.xml",
+        ":sphere_stack_xform.gltf",
         ":weird_sphere.gltf",
         ":weird_sphere.sdf",
         "//:server",

@@ -24,7 +24,7 @@
         <!-- We're using this in a context where we've introduced a
           RenderEngineVtk named "vtk" as a preview. Let's have this appear
           there. It will also service the visualizers. -->
-        <drake:accepting_renderer>vtk</drake:accepting_renderer>
+        <drake:accepting_renderer>this is junk, please don't use this as a name</drake:accepting_renderer>
         <material>
           <diffuse>0.53 0.01 0.53 1.0</diffuse>
         </material>
@@ -32,14 +32,14 @@
       <visual name="sphere_gltf">
         <pose>0 0 0.025 0 0 0</pose>
         <geometry>
-          <!-- <sphere>
-            <radius>0.04</radius>
-          </sphere> -->
           <mesh>
-            <uri>package://weird_sphere/weird_sphere.gltf</uri>
+            <uri>package://weird_sphere/sphere_stack_xform.gltf</uri>
             <scale>0.04 0.04 0.04</scale>
           </mesh>
         </geometry>
+        <!-- This declaration is redundant. As gltf client render engines are
+         the only types that can consume gltf files (and all others simply
+         ignore such meshes), the end result is the same. For now. -->
         <drake:accepting_renderer>blender</drake:accepting_renderer>
       </visual>
       <collision name="sphere_collision">
