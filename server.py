@@ -12,6 +12,7 @@ import logging
 import math
 from pathlib import Path
 import tempfile
+import time
 from types import NoneType
 import typing
 
@@ -22,6 +23,58 @@ _logger = logging.getLogger("server")
 
 _UINT16_MAX = 2**16 - 1
 
+class Stopwatch:
+    def __init__(self, name, parent=None):
+        self.name = name
+        self._start = None
+        self._count = 0
+        self._accum = 0
+        self._record = []
+        self.children = []
+        if parent is not None:
+            parent.children.append(self)
+
+    def start(self):
+        self._accum = 0
+        self._start = time.time()
+
+    def stop(self):
+        end = time.time()
+        self._record.append(end - self._start + self._accum)
+        self._count += 1
+
+    def mean(self):
+        if self._count > 0:
+            return sum(self._record) / self._count
+        return 0
+
+    def format(self, indent=0):
+        s = '  ' * indent + str(self)
+        for child in self.children:
+            s += '\n' + child.format(indent + 1)
+        return s
+
+    def __str__(self):
+        return (f"{self.mean():.6f} seconds - {self.name} over "
+                f"{self._count} measurements.")
+
+
+_request_clock = Stopwatch("Request handling")
+_blender_clock = Stopwatch("Blender operations", _request_clock)
+_scene_init_clock = Stopwatch("Scene init (reset, script, glTF load)",
+                              _blender_clock)
+_read_blend_clock = Stopwatch("Load blend", _scene_init_clock)
+_script_clock = Stopwatch("Blender script", _scene_init_clock)
+_gltf_clock = Stopwatch("Load glTF", _scene_init_clock)
+_scene_prep_clock = Stopwatch("Scene prep", _blender_clock)
+_render_clock = Stopwatch("Render", _blender_clock)
+
+CLOCKS = (_request_clock,)
+def report_clocks():
+    print("\n-----------------------")
+    for clock in CLOCKS:
+        print(clock.format(0))
+    print("\n-----------------------")
 
 @dc.dataclass
 class RenderParams:
@@ -125,31 +178,40 @@ class Blender:
         """
         # Always reset the scene to start with.
         self.reset_scene()
+        _scene_init_clock.start()
 
         # Load the blend file to set up the basic scene if provided; otherwise,
         # a default lighting is added.
+        _read_blend_clock.start()
         if self._blend_file is not None:
             bpy.ops.wm.open_mainfile(filepath=str(self._blend_file))
         else:
             self.add_default_light_source()
+        _read_blend_clock.stop()
 
+        _script_clock.start()
         # Apply the user's custom settings.
         if self._bpy_settings_file:
             with open(self._bpy_settings_file) as f:
                 code = compile(f.read(), self._bpy_settings_file, "exec")
                 exec(code, {"bpy": bpy}, dict())
+        _script_clock.stop()
 
+        _gltf_clock.start()
         self._client_objects = bpy.data.collections.new("ClientObjects")
         old_count = len(bpy.data.objects)
         # Import a glTF file. Note that the Blender glTF importer imposes a
         # +90 degree rotation around the X-axis when loading meshes. Thus, we
         # counterbalance the rotation right after the glTF-loading.
         bpy.ops.import_scene.gltf(filepath=str(params.scene))
+
+        _gltf_clock.stop()
+        _scene_init_clock.stop()
+        _scene_prep_clock.start()
         new_count = len(bpy.data.objects)
         # Reality check that all of the imported objects are selected by
         # default.
         assert new_count - old_count == len(bpy.context.selected_objects)
-
         # TODO(#39) This rotation is very suspicious. Get to the bottom of it.
         # We explicitly specify the pivot point for the rotation to allow for
         # glTF files with root nodes with arbitrary positioning. We simply want
@@ -229,9 +291,11 @@ class Blender:
             scene.render.image_settings.color_depth = "8"
             scene.display_settings.display_device = "None"
             self.label_render_settings()
-
+        _scene_prep_clock.stop()
         # Render the image.
+        _render_clock.start()
         bpy.ops.render.render(write_still=True)
+        _render_clock.stop()
 
     def depth_render_settings(self, min_depth, max_depth):
         # Turn anti-aliasing off.
@@ -381,9 +445,13 @@ class ServerApp(flask.Flask):
     def _render_endpoint(self):
         """Accepts a request to render and returns the generated image."""
         try:
+            _request_clock.start()
             params = self._parse_params(flask.request)
             buffer = self._render(params)
-            return flask.send_file(buffer, mimetype="image/png")
+            result = flask.send_file(buffer, mimetype="image/png")
+            _request_clock.stop()
+            report_clocks()
+            return result
         except Exception as e:
             code = 500
             message = f"Internal server error: {repr(e)}"
@@ -395,6 +463,7 @@ class ServerApp(flask.Flask):
                 },
                 code,
             )
+
 
     def _parse_params(self, request: flask.Request) -> RenderParams:
         """Converts an http request to a RenderParams."""
@@ -445,7 +514,9 @@ class ServerApp(flask.Flask):
         """Renders the given scene, returning the png data buffer."""
         output_path = params.scene.with_suffix(".png")
         try:
+            _blender_clock.start()
             self._blender.render_image(params=params, output_path=output_path)
+            _blender_clock.stop()
             with open(output_path, "rb") as f:
                 buffer = io.BytesIO(f.read())
             return buffer
